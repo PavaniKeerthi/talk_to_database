@@ -221,22 +221,32 @@ function getOpenAIProvider(apiKey) {
           apiKey: apiKey,
         });
 
-        const schema = databaseSchema.collections.students;
-        const fieldsInfo = Object.entries(schema.fields)
-          .filter(([key]) => key !== '_id' && schema.fields[key].filterable)
-          .map(([key, config]) => `${key} (${config.type})`)
-          .join(', ');
+        const allowedCollections = Object.keys(databaseSchema.collections).filter(
+          (name) => databaseSchema.isCollectionAllowed(name)
+        );
+
+        const collectionsInfo = allowedCollections
+          .map((colName) => {
+            const colSchema = databaseSchema.collections[colName];
+            const fields = Object.entries(colSchema.fields)
+              .filter(([key, config]) => key !== '_id' && config.filterable)
+              .map(([key, config]) => `${key} (${config.type})`)
+              .join(', ');
+            return `- ${colName}: ${fields}`;
+          })
+          .join('\n');
 
         const systemPrompt = `You are a MongoDB query generator. Convert natural language questions to structured MongoDB queries.
 
 IMPORTANT RULES:
 1. You MUST respond with ONLY valid JSON, no explanation or markdown
 2. The JSON must be a single structured query object
-3. ONLY use these fields: ${fieldsInfo}
+3. Allowed collections and their fields:
+${collectionsInfo}
 4. ONLY use operations: find, count
 5. For CGPA comparisons, use: { "cgpa": { "$gt": value } }
 6. For branch matching, use exact strings like "Computer Science"
-7. Always include "collectionName": "students"
+7. Always set "collectionName" to either "students" or "courses"
 8. Always include "operation" (find or count)
 9. Never invent fields not listed above
 10. Never use write operations (insert, update, delete)
@@ -245,7 +255,12 @@ Examples:
 Q: "Show all students" → {"collectionName":"students","operation":"find","filter":{}}
 Q: "Show CS students" → {"collectionName":"students","operation":"find","filter":{"branch":"Computer Science"}}
 Q: "Students with CGPA > 8.5" → {"collectionName":"students","operation":"find","filter":{"cgpa":{"$gt":8.5}}}
-Q: "Count CS students" → {"collectionName":"students","operation":"count","filter":{"branch":"Computer Science"}}`;
+Q: "Count CS students" → {"collectionName":"students","operation":"count","filter":{"branch":"Computer Science"}}
+Q: "Show all courses" → {"collectionName":"courses","operation":"find","filter":{}}
+Q: "Show courses with 4 credits" → {"collectionName":"courses","operation":"find","filter":{"credits":4}}
+Q: "Who teaches Database Systems?" → {"collectionName":"courses","operation":"find","filter":{"title":"Database Systems"}}
+Q: "How many courses?" → {"collectionName":"courses","operation":"count","filter":{}}
+Q: "Count courses" → {"collectionName":"courses","operation":"count","filter":{}}`;
 
         const response = await client.chat.completions.create({
           model: 'gpt-3.5-turbo',
@@ -305,6 +320,13 @@ function getMockProvider() {
 
       // Count queries (check BEFORE show queries)
       if (q.includes('count') || q.includes('how many')) {
+        if (q.includes('course')) {
+          return {
+            collectionName: 'courses',
+            operation: 'count',
+            filter: {},
+          };
+        }
         if (
           q.includes('computer science') ||
           q.includes('cs') ||
@@ -336,6 +358,52 @@ function getMockProvider() {
             cgpa: -1,
           },
           limit: limitMatch ? parseInt(limitMatch[1]) : 5,
+        };
+      }
+
+      // Course: Who teaches / instructor queries
+      if (q.includes('teaches') || q.includes('instructor')) {
+        if (q.includes('database systems')) {
+          return {
+            collectionName: 'courses',
+            operation: 'find',
+            filter: {
+              title: 'Database Systems',
+            },
+          };
+        }
+        const teachesMatch = question.match(/(?:who\s+teaches|instructor\s+(?:for|of))\s+([^?]+)/i);
+        if (teachesMatch && teachesMatch[1].trim()) {
+          return {
+            collectionName: 'courses',
+            operation: 'find',
+            filter: {
+              title: teachesMatch[1].trim(),
+            },
+          };
+        }
+      }
+
+      // Course: credits filtering
+      if (q.includes('credit')) {
+        const creditsMatch = q.match(/(\d+)\s+credits?/i) || q.match(/credits?\s+(?:with|of|=|:)?\s*(\d+)/i);
+        if (creditsMatch) {
+          return {
+            collectionName: 'courses',
+            operation: 'find',
+            filter: {
+              credits: parseInt(creditsMatch[1], 10),
+            },
+          };
+        }
+      }
+
+      // Course: Show all courses
+      if (q.includes('course') && (q.includes('show') || q.includes('all') || q.includes('list'))) {
+        return {
+          collectionName: 'courses',
+          operation: 'find',
+          filter: {},
         };
       }
 

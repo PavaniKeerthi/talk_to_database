@@ -155,6 +155,80 @@ await test('Filter: Year 1 students', 'show year 1 students', 'students', 'find'
 await test('Filter: Year 4 students', 'show year 4 students', 'students', 'find');
 
 // ============================================================================
+// STEP 14: COURSE QUERY TESTS (Multi-Collection AI Query Generation)
+// ============================================================================
+
+console.log('\n--- STEP 14: COURSE QUERY TESTS ---\n');
+
+await test('Course: Show all courses', 'show all courses', 'courses', 'find');
+
+await test('Course: Show courses with 4 credits', 'show courses with 4 credits', 'courses', 'find');
+
+await test('Course: Who teaches Database Systems?', 'who teaches database systems', 'courses', 'find');
+
+await test('Course: How many courses?', 'how many courses', 'courses', 'count');
+
+await test('Course: Count courses', 'count courses', 'courses', 'count');
+
+// Additional filter and validation assertions for courses
+async function testCourseQueryDetail(name, normalizedQuestion, expectedFilter) {
+  try {
+    const generatedQuery = await generateQuery(normalizedQuestion);
+
+    if (!generatedQuery) {
+      failed++;
+      results.push(`❌ FAIL: ${name}`);
+      results.push(`   Expected query object, got null`);
+      return;
+    }
+
+    const validationResult = validateQuery(generatedQuery);
+    if (!validationResult.valid) {
+      failed++;
+      results.push(`❌ FAIL: ${name}`);
+      results.push(`   Query failed validation: ${validationResult.error}`);
+      return;
+    }
+
+    if (expectedFilter !== undefined) {
+      const actualFilterStr = JSON.stringify(generatedQuery.filter || {});
+      const expectedFilterStr = JSON.stringify(expectedFilter);
+      if (actualFilterStr !== expectedFilterStr) {
+        failed++;
+        results.push(`❌ FAIL: ${name}`);
+        results.push(`   Expected filter ${expectedFilterStr}, got ${actualFilterStr}`);
+        return;
+      }
+    }
+
+    passed++;
+    results.push(`✅ PASS: ${name} (validates and matches expected structure)`);
+  } catch (error) {
+    failed++;
+    results.push(`❌ FAIL: ${name}`);
+    results.push(`   Error: ${error.message}`);
+  }
+}
+
+await testCourseQueryDetail(
+  'Course Detail: Credits filter matches and validates',
+  'show courses with 4 credits',
+  { credits: 4 }
+);
+
+await testCourseQueryDetail(
+  'Course Detail: Title filter matches and validates',
+  'who teaches database systems',
+  { title: 'Database Systems' }
+);
+
+await testCourseQueryDetail(
+  'Course Detail: Count courses validates',
+  'count courses',
+  {}
+);
+
+// ============================================================================
 // UNRECOGNIZED QUESTION TESTS
 // ============================================================================
 
@@ -334,6 +408,19 @@ await testSecurityBoundary('Security: Dangerous operator rejected', {
     name: {
       $regex: '.*',
     },
+  },
+});
+
+await testSecurityBoundary('Security: Courses insert operation rejected', {
+  collectionName: 'courses',
+  operation: 'insert',
+});
+
+await testSecurityBoundary('Security: Courses unknown field rejected', {
+  collectionName: 'courses',
+  operation: 'find',
+  filter: {
+    nonexistentField: 'value',
   },
 });
 
