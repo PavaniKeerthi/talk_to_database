@@ -17,7 +17,7 @@
 
 import mongoose from 'mongoose';
 import validateQuery from './queryValidator.js';
-import Student from '../models/Student.js';
+import resolveModel from './modelResolver.js';
 
 /**
  * Execute a structured query against MongoDB
@@ -45,8 +45,8 @@ export const executeQuery = async (query) => {
     // Step 2: Extract the validated/sanitized query
     const validatedQuery = validationResult.query;
 
-    // Step 3: Get the Model for the collection
-    const Model = getModelForCollection(validatedQuery.collectionName);
+    // Step 3: Get the Model for the collection using modelResolver
+    const Model = resolveModel(validatedQuery.collectionName);
 
     if (!Model) {
       return {
@@ -105,22 +105,12 @@ export const executeQuery = async (query) => {
 };
 
 /**
- * Get the Mongoose Model for a collection name
+ * Model Resolution
  * 
- * This prevents dynamic access to arbitrary collections.
- * Only explicitly whitelisted collections are allowed.
- * 
- * @param {string} collectionName - The name of the collection
- * @returns {Object|null} - The Mongoose Model or null if not found
+ * Model resolution is now handled by modelResolver.js (STEP 11).
+ * This centralizes all executable model definitions in one place.
+ * See server/src/services/modelResolver.js for the model registry.
  */
-function getModelForCollection(collectionName) {
-  // Hardcoded mapping - no dynamic access
-  const models = {
-    students: Student,
-  };
-
-  return models[collectionName] || null;
-}
 
 /**
  * Execute a find query
