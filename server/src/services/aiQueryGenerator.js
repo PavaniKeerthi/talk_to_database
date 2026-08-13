@@ -23,7 +23,7 @@ import databaseSchema from '../config/databaseSchema.js';
  * 
  * This function is the main entry point. It:
  * 1. Validates input
- * 2. Calls the configured AI provider
+ * 2. Calls the configured AI provider (optionally with discovered schema for context)
  * 3. Sanitizes the AI output
  * 4. Returns a structured query object (or null on failure)
  * 
@@ -31,9 +31,10 @@ import databaseSchema from '../config/databaseSchema.js';
  * CRITICAL: Validator must run on the output. Never skip validation.
  * 
  * @param {string} normalizedQuestion - The normalized natural language question
+ * @param {Object|undefined} discoveredSchema - Optional discovered MongoDB schema for AI context
  * @returns {Promise<Object|null>} - Structured query object or null
  */
-export const generateQuery = async (normalizedQuestion) => {
+export const generateQuery = async (normalizedQuestion, discoveredSchema) => {
   // Step 1: Validate input
   if (typeof normalizedQuestion !== 'string' || normalizedQuestion.trim().length === 0) {
     console.error('AI: Invalid normalized question input');
@@ -49,8 +50,8 @@ export const generateQuery = async (normalizedQuestion) => {
       return null;
     }
 
-    // Step 3: Generate query using the provider
-    const generatedQuery = await provider.generateQuery(normalizedQuestion);
+    // Step 3: Generate query using the provider (optionally with discovered schema)
+    const generatedQuery = await provider.generateQuery(normalizedQuestion, discoveredSchema);
 
     if (!generatedQuery) {
       console.error('AI: Provider returned null/undefined');
@@ -67,6 +68,7 @@ export const generateQuery = async (normalizedQuestion) => {
 
     // Step 5: Return the sanitized query
     // NOTE: This query MUST be validated by queryValidator.js before execution
+    // NOTE: Discovered schema is informational only; validation uses hardcoded databaseSchema.js
     return sanitizedQuery;
   } catch (error) {
     console.error('AI generation error:', error.message);
@@ -210,7 +212,7 @@ function getOpenAIProvider(apiKey) {
   // We'll dynamically import openai package only if needed
   // This is intentional - we don't want to force the dependency
   return {
-    async generateQuery(question) {
+    async generateQuery(question, discoveredSchema) {
       try {
         // Lazy import to avoid hard dependency
         const { OpenAI } = await import('openai');
@@ -295,7 +297,9 @@ Q: "Count CS students" → {"collectionName":"students","operation":"count","fil
  */
 function getMockProvider() {
   return {
-    async generateQuery(question) {
+    async generateQuery(question, discoveredSchema) {
+      // discoveredSchema is available for context but not required
+      // The mock provider continues to use hardcoded logic
       // Simple pattern matching for common questions
       const q = question.toLowerCase();
 

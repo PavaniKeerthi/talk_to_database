@@ -4,13 +4,14 @@
  * Handles HTTP requests for structured query execution and natural language queries.
  * 
  * STEP 7: Integrated AI Query Generator
+ * STEP 9: Integrated Schema Discovery (informational context for AI)
  * 
  * Flow for natural language questions:
  * 1. Validate input
  * 2. Normalize question
  * 3. Check query cache
  * 4. If cache HIT: execute cached query
- * 5. If cache MISS: generate query with AI → validate → execute
+ * 5. If cache MISS: discover schema → generate query with AI → validate → execute
  * 6. Store successful queries in cache
  */
 
@@ -19,6 +20,7 @@ import validateQuery from '../services/queryValidator.js';
 import { normalizeQuestion } from '../services/questionNormalizer.js';
 import { lookupCachedQuery, storeQuery, recordCacheHit } from '../services/queryCache.js';
 import generateQuery from '../services/aiQueryGenerator.js';
+import getDiscoveredSchema from '../services/schemaDiscovery.js';
 
 /**
  * POST /api/query/execute
@@ -152,8 +154,18 @@ export const askQuestion = async (req, res) => {
       // CACHE MISS PATH
       console.log(`Cache miss for: "${normalizedQuestion}". Generating with AI...`);
 
-      // Step 4a: Generate query with AI
-      const aiGeneratedQuery = await generateQuery(normalizedQuestion);
+      // Step 3a: Try to discover schema for AI context (informational only)
+      let discoveredSchema = null;
+      try {
+        discoveredSchema = await getDiscoveredSchema();
+      } catch (error) {
+        // Schema discovery is optional; AI can still generate without it
+        console.warn(`Schema discovery failed: ${error.message}. Proceeding without schema context.`);
+        // Don't expose error details to client
+      }
+
+      // Step 4a: Generate query with AI (optionally using discovered schema as context)
+      const aiGeneratedQuery = await generateQuery(normalizedQuestion, discoveredSchema);
 
       if (!aiGeneratedQuery) {
         return res.status(200).json({
