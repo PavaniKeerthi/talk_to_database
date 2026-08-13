@@ -2,10 +2,23 @@
  * Query Controller
  * 
  * Handles HTTP requests for structured query execution and natural language queries.
+ * 
+ * STEP 7: Integrated AI Query Generator
+ * 
+ * Flow for natural language questions:
+ * 1. Validate input
+ * 2. Normalize question
+ * 3. Check query cache
+ * 4. If cache HIT: execute cached query
+ * 5. If cache MISS: generate query with AI → validate → execute
+ * 6. Store successful queries in cache
  */
 
 import executeQuery from '../services/queryExecutor.js';
+import validateQuery from '../services/queryValidator.js';
+import { normalizeQuestion } from '../services/questionNormalizer.js';
 import { lookupCachedQuery, storeQuery, recordCacheHit } from '../services/queryCache.js';
+import generateQuery from '../services/aiQueryGenerator.js';
 
 /**
  * POST /api/query/execute
@@ -51,13 +64,22 @@ export const executeStructuredQuery = async (req, res) => {
  * POST /api/query/ask
  * 
  * Ask a natural language question.
- * Normalizes the question and checks cache.
  * 
- * If cache HIT: returns the structured query (no execution yet without user confirmation).
- * If cache MISS: reports the miss.
- * 
- * Does NOT execute queries - that's a separate step.
- * Does NOT generate queries with AI yet.
+ * Flow:
+ * 1. Validate question
+ * 2. Normalize question
+ * 3. Check query cache
+ * 4. If cache HIT:
+ *    - Execute the cached query
+ *    - Return results
+ *    - Record cache hit
+ * 5. If cache MISS:
+ *    - Generate query with AI
+ *    - Validate AI output (CRITICAL SECURITY STEP)
+ *    - If validation fails, return error without executing
+ *    - If validation succeeds, execute query
+ *    - Store query in cache
+ *    - Return results
  * 
  * Request body:
  * {
@@ -68,41 +90,151 @@ export const askQuestion = async (req, res) => {
   try {
     const { question } = req.body;
 
-    if (!question) {
+    // Step 1: Validate question
+    if (!question || typeof question !== 'string') {
       return res.status(400).json({
-        error: 'Missing "question" field in request body.',
+        success: false,
+        error: 'Missing or invalid "question" field. Must be a string.',
       });
     }
 
-    // Lookup in cache
+    // Step 2: Normalize the question
+    const normalizedQuestion = normalizeQuestion(question);
+
+    if (!normalizedQuestion) {
+      return res.status(400).json({
+        success: false,
+        error: 'Question could not be normalized.',
+      });
+    }
+
+    // Step 3: Check query cache
     const cacheResult = await lookupCachedQuery(question);
 
     if (cacheResult.hit) {
-      // Cache hit: return the cached structured query
+      // CACHE HIT PATH
+      console.log(`Cache hit for: "${normalizedQuestion}"`);
+
+      // Execute the cached query
+      const executionResult = await executeQuery(cacheResult.structuredQuery);
+
+      if (!executionResult.success) {
+        return res.status(200).json({
+          success: false,
+          cacheHit: true,
+          question: question,
+          normalizedQuestion: normalizedQuestion,
+          query: cacheResult.structuredQuery,
+          error: executionResult.error,
+          executionTimeMs: executionResult.executionTimeMs,
+        });
+      }
+
+      // Record the cache hit in history
+      await recordCacheHit(cacheResult.historyRecord);
+
       return res.status(200).json({
         success: true,
         cacheHit: true,
         question: question,
-        normalizedQuestion: cacheResult.normalizedQuestion,
-        structuredQuery: cacheResult.structuredQuery,
-        message: 'Query found in cache. Use /api/query/execute to run it.',
+        normalizedQuestion: normalizedQuestion,
+        query: cacheResult.structuredQuery,
+        result: {
+          success: true,
+          operation: executionResult.operation,
+          collectionName: executionResult.collectionName,
+          data: executionResult.data,
+          count: executionResult.count,
+          executionTimeMs: executionResult.executionTimeMs,
+        },
       });
     } else {
-      // Cache miss: report for future AI generation
+      // CACHE MISS PATH
+      console.log(`Cache miss for: "${normalizedQuestion}". Generating with AI...`);
+
+      // Step 4a: Generate query with AI
+      const aiGeneratedQuery = await generateQuery(normalizedQuestion);
+
+      if (!aiGeneratedQuery) {
+        return res.status(200).json({
+          success: false,
+          cacheHit: false,
+          question: question,
+          normalizedQuestion: normalizedQuestion,
+          error: 'AI could not generate a query. Try rephrasing your question.',
+        });
+      }
+
+      // Step 4b: Validate AI-generated query (CRITICAL SECURITY STEP)
+      // This ensures AI cannot generate dangerous queries
+      const validationResult = validateQuery(aiGeneratedQuery);
+
+      if (!validationResult.valid) {
+        // Validation failed - DO NOT execute
+        console.warn(
+          `AI validation failed for: "${normalizedQuestion}". Reason: ${validationResult.error}`
+        );
+
+        return res.status(200).json({
+          success: false,
+          cacheHit: false,
+          question: question,
+          normalizedQuestion: normalizedQuestion,
+          generatedQuery: aiGeneratedQuery,
+          error: `Generated query failed validation: ${validationResult.error}`,
+          message:
+            'The AI-generated query did not pass security validation. This is a safety measure.',
+        });
+      }
+
+      // Step 4c: Execute the validated query
+      const sanitizedQuery = validationResult.query;
+      const executionResult = await executeQuery(sanitizedQuery);
+
+      if (!executionResult.success) {
+        return res.status(200).json({
+          success: false,
+          cacheHit: false,
+          question: question,
+          normalizedQuestion: normalizedQuestion,
+          query: sanitizedQuery,
+          error: executionResult.error,
+          executionTimeMs: executionResult.executionTimeMs,
+        });
+      }
+
+      // Step 4d: Store the successful query in cache
+      try {
+        await storeQuery(question, sanitizedQuery, {
+          resultCount: executionResult.count,
+          executionTimeMs: executionResult.executionTimeMs,
+        });
+      } catch (storeError) {
+        console.error('Failed to store query in cache:', storeError.message);
+        // Don't fail the response, just log the error
+      }
+
       return res.status(200).json({
         success: true,
         cacheHit: false,
         question: question,
-        normalizedQuestion: cacheResult.normalizedQuestion,
-        message:
-          'Query not found in cache. An AI layer will generate the query in the next phase.',
+        normalizedQuestion: normalizedQuestion,
+        query: sanitizedQuery,
+        result: {
+          success: true,
+          operation: executionResult.operation,
+          collectionName: executionResult.collectionName,
+          data: executionResult.data,
+          count: executionResult.count,
+          executionTimeMs: executionResult.executionTimeMs,
+        },
       });
     }
   } catch (error) {
-    console.error('Cache lookup error:', error.message);
+    console.error('Query processing error:', error.message);
     return res.status(500).json({
       success: false,
-      error: 'Internal server error while looking up cache.',
+      error: 'Internal server error while processing question.',
     });
   }
 };

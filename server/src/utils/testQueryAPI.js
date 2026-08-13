@@ -11,6 +11,10 @@ import { storeQuery } from '../services/queryCache.js';
 import connectDB from '../config/db.js';
 import QueryHistory from '../models/QueryHistory.js';
 
+// Enable mock AI provider for testing
+process.env.NO_AI = 'true';
+delete process.env.OPENAI_API_KEY;
+
 dotenv.config();
 
 let passed = 0;
