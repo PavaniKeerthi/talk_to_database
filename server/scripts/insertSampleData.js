@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import Student from '../src/models/Student.js';
+import Course from '../src/models/Course.js';
 import connectDB from '../src/config/db.js';
 
 dotenv.config();
@@ -18,24 +19,45 @@ const sampleStudents = [
   { name: 'Zara Khan', branch: 'Computer Science', cgpa: 9.0, year: 2 },
 ];
 
+const sampleCourses = [
+  { code: 'CS101', title: 'Data Structures', credits: 3, instructor: 'Dr. Sharma' },
+  { code: 'CS201', title: 'Algorithms', credits: 4, instructor: 'Prof. Patel' },
+  { code: 'CS301', title: 'Database Systems', credits: 3, instructor: 'Dr. Singh' },
+  { code: 'EC101', title: 'Circuit Analysis', credits: 3, instructor: 'Prof. Kumar' },
+  { code: 'EC201', title: 'Digital Electronics', credits: 4, instructor: 'Dr. Verma' },
+];
+
 const insertSampleData = async () => {
   try {
     await connectDB();
     console.log('Connected to MongoDB.');
 
-    // Clear existing students collection
+    // Clear existing collections
     await Student.deleteMany({});
     console.log('Cleared existing students collection.');
 
-    // Insert sample data
-    const result = await Student.insertMany(sampleStudents);
-    console.log(`Successfully inserted ${result.length} sample students.`);
+    await Course.deleteMany({});
+    console.log('Cleared existing courses collection.');
 
-    // Display inserted students
+    // Insert students
+    const students = await Student.insertMany(sampleStudents);
+    console.log(`Successfully inserted ${students.length} sample students.`);
+
     console.log('\nInserted students:');
-    result.forEach((student, index) => {
+    students.forEach((student, index) => {
       console.log(
         `${index + 1}. ${student.name} (${student.branch}, CGPA: ${student.cgpa}, Year: ${student.year})`
+      );
+    });
+
+    // Insert courses
+    const courses = await Course.insertMany(sampleCourses);
+    console.log(`\nSuccessfully inserted ${courses.length} sample courses.`);
+
+    console.log('\nInserted courses:');
+    courses.forEach((course, index) => {
+      console.log(
+        `${index + 1}. ${course.code} - ${course.title} (${course.credits} credits, Instructor: ${course.instructor})`
       );
     });
 

@@ -62,6 +62,54 @@ export const databaseSchema = {
         },
       },
     },
+    courses: {
+      name: 'courses',
+      allowed: true,
+      fields: {
+        _id: {
+          type: 'objectId',
+          filterable: false,
+          sortable: false,
+          projectable: true,
+        },
+        code: {
+          type: 'string',
+          filterable: true,
+          sortable: true,
+          projectable: true,
+        },
+        title: {
+          type: 'string',
+          filterable: true,
+          sortable: true,
+          projectable: true,
+        },
+        credits: {
+          type: 'number',
+          filterable: true,
+          sortable: true,
+          projectable: true,
+        },
+        instructor: {
+          type: 'string',
+          filterable: true,
+          sortable: true,
+          projectable: true,
+        },
+        createdAt: {
+          type: 'date',
+          filterable: false,
+          sortable: false,
+          projectable: false,
+        },
+        updatedAt: {
+          type: 'date',
+          filterable: false,
+          sortable: false,
+          projectable: false,
+        },
+      },
+    },
   },
 
   // Allowed operations

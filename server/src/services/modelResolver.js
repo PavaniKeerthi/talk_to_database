@@ -27,6 +27,7 @@
  */
 
 import Student from '../models/Student.js';
+import Course from '../models/Course.js';
 
 /**
  * Static registry of collection → Mongoose model mappings
@@ -43,6 +44,7 @@ import Student from '../models/Student.js';
  */
 const MODEL_REGISTRY = {
   students: Student,
+  courses: Course,
   // Future: other collections can be added here explicitly
   // products: Product,
   // orders: Order,
