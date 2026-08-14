@@ -4,6 +4,7 @@ const SUGGESTIONS = [
   'Show all students',
   'Show courses with 4 credits',
   'Count CS students',
+  'Average CGPA by branch',
 ];
 
 export default function QueryInput({

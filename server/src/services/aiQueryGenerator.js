@@ -98,6 +98,7 @@ function sanitizeGeneratedQuery(query) {
   const sanitized = {
     ...(query.collectionName && { collectionName: String(query.collectionName) }),
     ...(query.operation && { operation: String(query.operation) }),
+    ...(query.pipeline && Array.isArray(query.pipeline) && { pipeline: sanitizePipelineArray(query.pipeline) }),
     ...(query.filter && typeof query.filter === 'object' && { filter: sanitizeFilterObject(query.filter) }),
     ...(query.projection && typeof query.projection === 'object' && { projection: sanitizeFilterObject(query.projection) }),
     ...(query.sort && typeof query.sort === 'object' && { sort: sanitizeFilterObject(query.sort) }),
@@ -111,6 +112,23 @@ function sanitizeGeneratedQuery(query) {
   }
 
   return sanitized;
+}
+
+/**
+ * Sanitize an aggregation pipeline array
+ *
+ * @param {Array} pipeline - Array of pipeline stage objects
+ * @param {number} depth - Recursion depth limit
+ * @returns {Array} - Sanitized pipeline array
+ */
+function sanitizePipelineArray(pipeline, depth = 0) {
+  if (!Array.isArray(pipeline) || depth > 5) {
+    return [];
+  }
+
+  return pipeline
+    .filter((stage) => isPlainObject(stage))
+    .map((stage) => sanitizeFilterObject(stage, depth + 1));
 }
 
 /**
@@ -145,10 +163,19 @@ function sanitizeFilterObject(obj, depth = 0) {
     } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null) {
       sanitized[key] = value;
     } else if (Array.isArray(value)) {
-      // Only allow simple arrays of primitives
-      sanitized[key] = value.filter(
-        (item) => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean' || item === null
-      );
+      // Allow arrays of primitives or nested stage objects
+      sanitized[key] = value
+        .filter((item) => item !== undefined)
+        .map((item) => {
+          if (isPlainObject(item)) {
+            return sanitizeFilterObject(item, depth + 1);
+          }
+          if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean' || item === null) {
+            return item;
+          }
+          return null;
+        })
+        .filter((item) => item !== null);
     }
     // Silently drop other types (functions, dates, etc.)
   }
@@ -243,24 +270,27 @@ IMPORTANT RULES:
 2. The JSON must be a single structured query object
 3. Allowed collections and their fields:
 ${collectionsInfo}
-4. ONLY use operations: find, count
-5. For CGPA comparisons, use: { "cgpa": { "$gt": value } }
-6. For branch matching, use exact strings like "Computer Science"
-7. Always set "collectionName" to either "students" or "courses"
-8. Always include "operation" (find or count)
-9. Never invent fields not listed above
-10. Never use write operations (insert, update, delete)
+4. Allowed operations: find, count, aggregate
+5. For find/count: use "filter", "projection", "sort", "limit"
+6. For aggregate: use "pipeline" array containing safe stages: $match, $group, $project, $sort, $limit
+7. For $group: use _id (e.g. "$branch", "$instructor", or null) and allowed accumulators: $avg, $sum, $min, $max, $count, $first, $last
+8. NEVER generate forbidden stages such as $lookup, $out, $merge, $function, $accumulator, $graphLookup, or $facet
+9. Always set "collectionName" to either "students" or "courses"
+10. Never invent fields not listed above
+11. Never use write operations (insert, update, delete)
 
 Examples:
 Q: "Show all students" → {"collectionName":"students","operation":"find","filter":{}}
 Q: "Show CS students" → {"collectionName":"students","operation":"find","filter":{"branch":"Computer Science"}}
 Q: "Students with CGPA > 8.5" → {"collectionName":"students","operation":"find","filter":{"cgpa":{"$gt":8.5}}}
 Q: "Count CS students" → {"collectionName":"students","operation":"count","filter":{"branch":"Computer Science"}}
+Q: "What is the average CGPA per branch?" → {"collectionName":"students","operation":"aggregate","pipeline":[{"$group":{"_id":"$branch","avgCgpa":{"$avg":"$cgpa"},"totalStudents":{"$sum":1}}},{"$sort":{"avgCgpa":-1}}]}
 Q: "Show all courses" → {"collectionName":"courses","operation":"find","filter":{}}
 Q: "Show courses with 4 credits" → {"collectionName":"courses","operation":"find","filter":{"credits":4}}
+Q: "Total credits of all courses" → {"collectionName":"courses","operation":"aggregate","pipeline":[{"$group":{"_id":null,"totalCredits":{"$sum":"$credits"},"courseCount":{"$sum":1}}}]}
+Q: "Show course counts by instructor" → {"collectionName":"courses","operation":"aggregate","pipeline":[{"$group":{"_id":"$instructor","courseCount":{"$sum":1}}},{"$sort":{"courseCount":-1}}]}
 Q: "Who teaches Database Systems?" → {"collectionName":"courses","operation":"find","filter":{"title":"Database Systems"}}
-Q: "How many courses?" → {"collectionName":"courses","operation":"count","filter":{}}
-Q: "Count courses" → {"collectionName":"courses","operation":"count","filter":{}}`;
+Q: "How many courses?" → {"collectionName":"courses","operation":"count","filter":{}}`;
 
         const response = await client.chat.completions.create({
           model: 'gpt-3.5-turbo',
@@ -317,6 +347,69 @@ function getMockProvider() {
       // The mock provider continues to use hardcoded logic
       // Simple pattern matching for common questions
       const q = question.toLowerCase();
+
+      // Aggregation: Average CGPA per branch
+      if ((q.includes('average') || q.includes('avg')) && q.includes('cgpa')) {
+        return {
+          collectionName: 'students',
+          operation: 'aggregate',
+          pipeline: [
+            {
+              $group: {
+                _id: '$branch',
+                avgCgpa: { $avg: '$cgpa' },
+                totalStudents: { $sum: 1 },
+              },
+            },
+            {
+              $sort: {
+                avgCgpa: -1,
+              },
+            },
+          ],
+        };
+      }
+
+      // Aggregation: Total credits of all courses
+      if ((q.includes('total') || q.includes('sum')) && q.includes('credit')) {
+        return {
+          collectionName: 'courses',
+          operation: 'aggregate',
+          pipeline: [
+            {
+              $group: {
+                _id: null,
+                totalCredits: { $sum: '$credits' },
+                courseCount: { $sum: 1 },
+              },
+            },
+          ],
+        };
+      }
+
+      // Aggregation: Course counts by instructor
+      if (
+        q.includes('instructor') &&
+        (q.includes('count') || q.includes('by') || q.includes('per') || q.includes('course'))
+      ) {
+        return {
+          collectionName: 'courses',
+          operation: 'aggregate',
+          pipeline: [
+            {
+              $group: {
+                _id: '$instructor',
+                courseCount: { $sum: 1 },
+              },
+            },
+            {
+              $sort: {
+                courseCount: -1,
+              },
+            },
+          ],
+        };
+      }
 
       // Count queries (check BEFORE show queries)
       if (q.includes('count') || q.includes('how many')) {
