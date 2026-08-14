@@ -20,7 +20,8 @@ import validateQuery from '../services/queryValidator.js';
 import { normalizeQuestion } from '../services/questionNormalizer.js';
 import { lookupCachedQuery, storeQuery, recordCacheHit } from '../services/queryCache.js';
 import generateQuery from '../services/aiQueryGenerator.js';
-import getDiscoveredSchema from '../services/schemaDiscovery.js';
+import getDiscoveredSchema, { normalizeDiscoveredSchema } from '../services/schemaDiscovery.js';
+import { getCollectionCapabilities } from '../services/collectionCapabilities.js';
 
 /**
  * POST /api/query/execute
@@ -299,6 +300,58 @@ export const getQueryStats = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Failed to retrieve statistics.',
+    });
+  }
+};
+
+/**
+ * GET /api/query/schema
+ *
+ * Get the discovered database schema.
+ */
+export const getSchema = async (req, res) => {
+  try {
+    const discoveredSchema = await getDiscoveredSchema();
+    const normalized = normalizeDiscoveredSchema(discoveredSchema);
+
+    return res.status(200).json({
+      success: true,
+      schema: normalized,
+    });
+  } catch (error) {
+    console.error('Schema fetch error:', error.message);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve database schema.',
+    });
+  }
+};
+
+/**
+ * GET /api/query/capabilities
+ *
+ * Get collection capabilities (discovered, queryable, executable).
+ */
+export const getCapabilities = async (req, res) => {
+  try {
+    let discoveredSchema = null;
+    try {
+      discoveredSchema = await getDiscoveredSchema();
+    } catch (e) {
+      // Discovered schema is optional for capabilities
+    }
+
+    const capabilities = await getCollectionCapabilities(discoveredSchema);
+
+    return res.status(200).json({
+      success: true,
+      capabilities: capabilities,
+    });
+  } catch (error) {
+    console.error('Capabilities fetch error:', error.message);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve collection capabilities.',
     });
   }
 };

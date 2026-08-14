@@ -13,6 +13,8 @@ import {
   askQuestion,
   getQueryHistory,
   getQueryStats,
+  getSchema,
+  getCapabilities,
 } from '../controllers/queryController.js';
 
 const router = express.Router();
@@ -28,5 +30,11 @@ router.get('/history', getQueryHistory);
 
 // Get cache statistics
 router.get('/history/stats', getQueryStats);
+
+// Get discovered database schema
+router.get('/schema', getSchema);
+
+// Get collection capabilities
+router.get('/capabilities', getCapabilities);
 
 export default router;
