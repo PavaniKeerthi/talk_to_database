@@ -171,20 +171,32 @@ async function executeCountQuery(Model, query) {
 /**
  * Execute an aggregate query
  * 
- * For now, aggregation pipelines require additional validation that
- * isn't yet implemented in queryValidator.js.
- * 
- * TODO: When aggregation pipeline validation is added to queryValidator,
- * implement this method to safely execute aggregation stages.
- * 
  * @param {Object} Model - The Mongoose Model
  * @param {Object} query - The validated query object
- * @returns {Promise<Object>} - Error response
+ * @returns {Promise<Object>} - {data: [...], count: number}
  */
 async function executeAggregateQuery(Model, query) {
-  throw new Error(
-    'Aggregate queries require additional pipeline validation. Not yet implemented.'
-  );
+  let pipeline = [];
+  if (query.pipeline && Array.isArray(query.pipeline)) {
+    pipeline = [...query.pipeline];
+  } else if (query.filter) {
+    pipeline = [{ $match: query.filter }];
+  }
+
+  // If a top-level limit is specified and no $limit stage is present in the pipeline, append it
+  if (query.limit !== undefined) {
+    const hasLimitStage = pipeline.some((stage) => stage.$limit !== undefined);
+    if (!hasLimitStage) {
+      pipeline.push({ $limit: query.limit });
+    }
+  }
+
+  const results = await Model.aggregate(pipeline).exec();
+
+  return {
+    data: results,
+    count: results.length,
+  };
 }
 
 export default executeQuery;

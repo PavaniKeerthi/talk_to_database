@@ -158,11 +158,44 @@ export const databaseSchema = {
     $eval: { allowed: false, reason: 'JavaScript execution not permitted' },
   },
 
+  // Allowed aggregation stages (strictly whitelisted for read-only analytics)
+  aggregationStages: {
+    $match: { allowed: true, category: 'filter' },
+    $group: { allowed: true, category: 'group' },
+    $project: { allowed: true, category: 'projection' },
+    $sort: { allowed: true, category: 'sort' },
+    $limit: { allowed: true, category: 'limit' },
+    // Explicitly forbidden stages (security):
+    $lookup: { allowed: false, reason: 'Cross-collection lookup is not permitted' },
+    $out: { allowed: false, reason: 'Database write stage is not permitted' },
+    $merge: { allowed: false, reason: 'Database merge stage is not permitted' },
+    $graphLookup: { allowed: false, reason: 'Graph lookup is not permitted' },
+    $facet: { allowed: false, reason: 'Facet stage is not permitted' },
+    $function: { allowed: false, reason: 'JavaScript execution is not permitted' },
+    $accumulator: { allowed: false, reason: 'JavaScript execution is not permitted' },
+    $where: { allowed: false, reason: 'JavaScript execution is not permitted' },
+  },
+
+  // Allowed accumulators in $group stages
+  accumulators: {
+    $avg: { allowed: true, numericOnly: true },
+    $sum: { allowed: true, numericOnly: true },
+    $min: { allowed: true, numericOnly: false },
+    $max: { allowed: true, numericOnly: false },
+    $count: { allowed: true, numericOnly: false },
+    $first: { allowed: true, numericOnly: false },
+    $last: { allowed: true, numericOnly: false },
+    // Explicitly forbidden accumulators (security):
+    $accumulator: { allowed: false, reason: 'JavaScript execution is not permitted' },
+    $function: { allowed: false, reason: 'JavaScript execution is not permitted' },
+  },
+
   // Query constraints
   limits: {
     maxLimit: 100,      // Maximum documents to return
     maxSkip: 1000,      // Maximum documents to skip
     defaultLimit: 50,   // Default if not specified
+    maxPipelineStages: 10, // Maximum aggregation stages allowed
   },
 
   // Helper functions to query this schema
@@ -179,6 +212,40 @@ export const databaseSchema = {
    */
   isOperationAllowed(operation) {
     return this.operations[operation]?.allowed === true;
+  },
+
+  /**
+   * Check if an aggregation stage is allowed
+   */
+  isAggregationStageAllowed(stageName) {
+    return this.aggregationStages[stageName]?.allowed === true;
+  },
+
+  /**
+   * Get the reason why an aggregation stage is not allowed
+   */
+  getAggregationStageBlockReason(stageName) {
+    const stage = this.aggregationStages[stageName];
+    if (!stage) return 'Unknown aggregation stage';
+    if (stage.allowed) return null;
+    return stage.reason || 'Not allowed';
+  },
+
+  /**
+   * Check if an accumulator operator is allowed
+   */
+  isAccumulatorAllowed(accumulatorName) {
+    return this.accumulators[accumulatorName]?.allowed === true;
+  },
+
+  /**
+   * Get the reason why an accumulator is not allowed
+   */
+  getAccumulatorBlockReason(accumulatorName) {
+    const acc = this.accumulators[accumulatorName];
+    if (!acc) return 'Unknown accumulator operator';
+    if (acc.allowed) return null;
+    return acc.reason || 'Not allowed';
   },
 
   /**
