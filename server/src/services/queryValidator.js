@@ -162,7 +162,7 @@ function validateCollectionName(collectionName) {
   if (!databaseSchema.isCollectionAllowed(collectionName)) {
     return {
       valid: false,
-      error: `Collection "${collectionName}" is not allowed. Only "students" is currently supported.`,
+      error: `Collection "${collectionName}" is not allowed.`,
     };
   }
 

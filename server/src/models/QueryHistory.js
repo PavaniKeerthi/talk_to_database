@@ -64,7 +64,7 @@ const queryHistorySchema = new mongoose.Schema(
     collectionName: {
       type: String,
       required: true,
-      enum: ['students'],  // Whitelist allowed collections
+      enum: ['students', 'courses'],  // Whitelist allowed collections
     },
 
     // Which operation was performed

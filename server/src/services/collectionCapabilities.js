@@ -40,6 +40,7 @@
  */
 
 import databaseSchema from '../config/databaseSchema.js';
+import { isCollectionRegistered, getRegisteredCollections } from './modelResolver.js';
 
 /**
  * Get unified capabilities for all collections
@@ -63,12 +64,14 @@ export async function getCollectionCapabilities(discoveredSchema) {
         ? true
         : false;
 
+    const hasModel = isCollectionExecutable(collectionName);
+
     capabilities[collectionName] = {
       name: collectionName,
       discovered: isDiscovered,
       queryable: true, // Hardcoded whitelist
-      executable: true, // Has Mongoose model
-      hasModel: true,
+      executable: hasModel, // Has Mongoose model
+      hasModel: hasModel,
     };
   }
 
@@ -136,14 +139,9 @@ export function isCollectionQueryable(collectionName) {
  * @returns {boolean} - True if has model
  */
 export function isCollectionExecutable(collectionName) {
-  // CRITICAL: Uses hardcoded model mapping only
+  // Uses static model registry from modelResolver
   // No dynamic model loading
-  // Currently only 'students' has a model
-  const models = {
-    students: true,
-  };
-
-  return models[collectionName] === true;
+  return isCollectionRegistered(collectionName);
 }
 
 /**
@@ -182,7 +180,7 @@ export function getQueryableCollections() {
  * @returns {Array<string>} - Collection names
  */
 export function getExecutableCollections() {
-  return ['students']; // Hardcoded - only students has a model
+  return getRegisteredCollections();
 }
 
 /**
