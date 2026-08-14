@@ -2,7 +2,7 @@
  * TalkDB API Service
  *
  * Client-side HTTP service communicating with the TalkDB backend.
- * Provides helper functions for query asking and health checks.
+ * Provides helper functions for querying, history, stats, schema, and capabilities.
  */
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -47,6 +47,115 @@ export async function askQuestion(question) {
 }
 
 /**
+ * Fetch recent query history
+ *
+ * @param {number} limit - Maximum number of queries to fetch
+ * @returns {Promise<Object>} - { success: true, count: number, queries: Array }
+ */
+export async function getQueryHistory(limit = 10) {
+  try {
+    const res = await fetch(`${API_BASE}/api/query/history?limit=${limit}`);
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      throw new Error(data?.error || `Server error: HTTP ${res.status}`);
+    }
+
+    if (!data) {
+      throw new Error('Received an empty response from the server.');
+    }
+
+    return data;
+  } catch (err) {
+    if (err.name === 'TypeError' && err.message.toLowerCase().includes('fetch')) {
+      throw new Error('Unable to connect to TalkDB backend.');
+    }
+    throw err;
+  }
+}
+
+/**
+ * Fetch cache analytics and query statistics
+ *
+ * @returns {Promise<Object>} - { success: true, stats: Object }
+ */
+export async function getQueryStats() {
+  try {
+    const res = await fetch(`${API_BASE}/api/query/history/stats`);
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      throw new Error(data?.error || `Server error: HTTP ${res.status}`);
+    }
+
+    if (!data) {
+      throw new Error('Received an empty response from the server.');
+    }
+
+    return data;
+  } catch (err) {
+    if (err.name === 'TypeError' && err.message.toLowerCase().includes('fetch')) {
+      throw new Error('Unable to connect to TalkDB backend.');
+    }
+    throw err;
+  }
+}
+
+/**
+ * Fetch discovered database schema
+ *
+ * @returns {Promise<Object>} - { success: true, schema: Object }
+ */
+export async function getSchema() {
+  try {
+    const res = await fetch(`${API_BASE}/api/query/schema`);
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      throw new Error(data?.error || `Server error: HTTP ${res.status}`);
+    }
+
+    if (!data) {
+      throw new Error('Received an empty response from the server.');
+    }
+
+    return data;
+  } catch (err) {
+    if (err.name === 'TypeError' && err.message.toLowerCase().includes('fetch')) {
+      throw new Error('Unable to connect to TalkDB backend.');
+    }
+    throw err;
+  }
+}
+
+/**
+ * Fetch collection capabilities
+ *
+ * @returns {Promise<Object>} - { success: true, capabilities: Object }
+ */
+export async function getCapabilities() {
+  try {
+    const res = await fetch(`${API_BASE}/api/query/capabilities`);
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      throw new Error(data?.error || `Server error: HTTP ${res.status}`);
+    }
+
+    if (!data) {
+      throw new Error('Received an empty response from the server.');
+    }
+
+    return data;
+  } catch (err) {
+    if (err.name === 'TypeError' && err.message.toLowerCase().includes('fetch')) {
+      throw new Error('Unable to connect to TalkDB backend.');
+    }
+    throw err;
+  }
+}
+
+/**
  * Check backend health status
  *
  * @returns {Promise<Object>} - { ok: boolean, data?: Object, error?: string }
@@ -64,5 +173,9 @@ export async function checkHealth() {
 
 export default {
   askQuestion,
+  getQueryHistory,
+  getQueryStats,
+  getSchema,
+  getCapabilities,
   checkHealth,
 };
